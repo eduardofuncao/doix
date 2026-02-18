@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+
+todo_dir="$HOME/doix/"
+todo_file="$todo_dir/doix.md"
+backlog_file="$todo_dir/backlog.md"
+done_file="$todo_dir/done.md"
+
+cmd=$1
+shift
+
+run_init ()
+{
+  if [[ -d "$todo_dir" ]]; then
+    echo "doix directory already exists"
+  else
+    mkdir -p $todo_dir
+    touch $done_file
+    touch $backlog_file
+    printf "%b" \
+    "# Doix\n\n---\n\nactive_context:\n"\
+    "active_project:\n"\
+    "last_modified: 2026-02-11\n\n---\n\n"\
+    "## Active Tasks\n\n## Captured Tasks\n\n"\
+    "## Events\n\n## Weekly recurring\n\n"\
+    "## Monthly recurring\n" > "$todo_file"
+    echo "initialized doix directory at $todo_dir"
+  fi
+}
+
+run_add ()
+{
+  local task_desc="$*"
+  echo "add command"
+  sed -i "/^## Captured Tasks$/a $task_desc" $todo_file
+}
+
+run_list ()
+{
+  local search_term=$1
+  awk '/^## Active Tasks/{flag=1; next} /^## /{flag=0} flag' $todo_file | rg $search_term
+}
+
+run_remove ()
+{
+  local substring="$*"
+  sed -i "/$substring/d" $todo_file
+}
+
+run_default()
+{
+  echo "            _____        _
+         / |  __ \      (_)
+        /  | |  | | ___  ___  __
+  \    /   | |  | |/ _ \| \ \/ /
+   \  /    | |__| | (_) | |>  <
+    \/     |_____/ \___/|_/_/\_\\
+ ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+
+ Reimplementation of todo.txt in markdown with gtd candy
+  "
+}
+
+# main loop
+case "$cmd" in
+  "init"|"start") run_init $@
+  ;;
+  "add"|"a") run_add $@
+  ;;
+  "list"|"ls") run_list $@
+  ;;
+  "remove"|"rm") run_remove $@
+  ;;
+  *) run_default $@
+  ;;
+esac
+
+
+
