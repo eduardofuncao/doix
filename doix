@@ -8,8 +8,11 @@ done_file="$todo_dir/done.md"
 cmd=$1
 shift
 
-run_init ()
-{
+highlight_text () {
+  printf "\x1b[31m%s\x1b[0m\n" "$1"
+}
+
+run_init() {
   if [[ -d "$todo_dir" ]]; then
     echo "doix directory already exists"
   else
@@ -21,29 +24,129 @@ run_init ()
     "active_project:\n"\
     "last_modified: 2026-02-11\n\n---\n\n"\
     "## Active Tasks\n\n## Captured Tasks\n\n"\
-    "## Events\n\n## Weekly recurring\n\n"\
-    "## Monthly recurring\n" > "$todo_file"
+    "## Events\n\n## Weekly Recurring\n\n"\
+    "## Monthly Recurring\n" > "$todo_file"
     echo "initialized doix directory at $todo_dir"
   fi
 }
 
-run_add ()
-{
+run_add() {
   local task_desc="$*"
-  echo "add command"
   sed -i "/^## Captured Tasks$/a $task_desc" $todo_file
 }
 
-run_list ()
-{
-  local search_term=$1
-  awk '/^## Active Tasks/{flag=1; next} /^## /{flag=0} flag' $todo_file | rg $search_term
+run_list() {
+  local seach_term="$*"
+
+  filter_recurring () {
+    rg -v -- '^\s*-\s*\[x\]\s'
+  }
+
+  filter_events() {
+    awk '
+      BEGIN {
+        now = systime()
+        end = now + 30*24*60*60
+      }
+      function to_epoch(d) {
+        split(d, a, "-")
+        return mktime(a[1]" "a[2]" "a[3]" 00 00 00")
+      }
+      {
+        date = $1
+        if (date ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) {
+          t = to_epoch(date)
+          if (t >= now && t <= end)
+            print
+        }
+      }
+    '
+  }
+
+  print_section () {
+    local title=$1
+    local content=$(awk "/^## $title/{flag=1; next} /^## /{flag=0} flag" $todo_file)
+
+    case "$title" in
+      "Weekly Recurring"|"Monthly Recurring")
+        content=$(echo "$content" | filter_recurring)
+        ;;
+      "Events")
+        content=$(echo "$content" | filter_events)
+        ;;
+    esac
+
+    if [[ -n $seach_term ]]; then
+      content=$(echo "$content" | rg --color=always -- "$seach_term")
+    fi 
+
+    if [[ -n $content ]]; then
+      highlight_text "$title"
+      printf "%s\n\n" "$content"
+    # else
+    #   echo "none"
+    fi
+  }
+  print_section "Active Tasks"
+  print_section "Captured Tasks"
+  print_section "Events"
+  print_section "Weekly Recurring"
+  print_section "Monthly Recurring"
 }
 
-run_remove ()
-{
+run_remove() {
   local substring="$*"
-  sed -i "/$substring/d" $todo_file
+  local match=$(grep -n -- "$substring" "$todo_file" | head -n1)
+  local line=$(echo "$match" | cut -d: -f1)
+
+  if [[ -z $match ]]; then
+    printf "No task found matching: %s\n" "$substring"
+    return 1
+  fi
+
+  echo "$match"
+  read -p "Delete task? [y/n] " ans
+  if [[ $ans =~ ^[Yy]$ ]]; then
+    sed -i "${line}d" "$todo_file"
+  else
+    echo "Cancelled by the user"
+  fi
+}
+
+run_edit() {
+  local substring="$*"
+  local match=$(grep -n -- "$substring" "$todo_file" | head -n1)
+  local line=$(echo "$match" | cut -d: -f1)
+
+  if [[ -z $match ]]; then
+    printf "No task found matching: %s\n" "$substring"
+    return 1
+  fi
+
+  echo "$match"
+  read -p "Edited task: " new_task
+  sed -i "${line}s/.*/$new_task/" "$todo_file"
+}
+
+run_done() {
+  local substring="$*"
+  local match=$(grep -n -- "$substring" "$todo_file" | head -n1)
+  local line=$(echo "$match" | cut -d: -f1)
+  local text=$(echo "$match" | cut -d: -f2)
+
+  if [[ -z $match ]]; then
+    printf "No task found matching: %s\n" "$substring"
+    return 1
+  fi
+
+  echo "$match"
+  read -p "complete task? [y/n] " ans
+  if [[ $ans =~ ^[Yy]$ ]]; then
+    printf "x $(date +%F) %s\n" "$text" >> $done_file
+    sed -i "${line}d" "$todo_file"
+  else
+    echo "Cancelled by the user"
+  fi
 }
 
 run_default()
@@ -54,15 +157,14 @@ run_default()
   \    /   | |  | |/ _ \| \ \/ /
    \  /    | |__| | (_) | |>  <
     \/     |_____/ \___/|_/_/\_\\
- ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+ ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
 
  Reimplementation of todo.txt in markdown with gtd candy
   "
 }
 
-# main loop
 case "$cmd" in
-  "init"|"start") run_init $@
+  "init"|"start") run_init
   ;;
   "add"|"a") run_add $@
   ;;
@@ -70,9 +172,10 @@ case "$cmd" in
   ;;
   "remove"|"rm") run_remove $@
   ;;
-  *) run_default $@
+  "edit"|"ed") run_edit $@
+  ;;
+  "done") run_done $@
+  ;;
+  *) run_default
   ;;
 esac
-
-
-
