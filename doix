@@ -128,6 +128,22 @@ run_edit() {
   sed -i "${line}s/.*/$new_task/" "$todo_file"
 }
 
+run_backlog() {
+  local seach_term="$*"
+  local content=$(cat $backlog_file)
+
+  if [[ -n $seach_term ]]; then
+    content=$(echo "$content" | rg --color=always -- "$seach_term")
+  fi 
+
+  if [[ -n $content ]]; then
+    highlight_text "Backlog"
+    printf "%s\n\n" "$content"
+  else
+    echo "none"
+  fi
+}
+
 run_done() {
   local substring="$*"
   local match=$(grep -n -- "$substring" "$todo_file" | head -n1)
@@ -149,18 +165,32 @@ run_done() {
   fi
 }
 
-run_default()
-{
-  echo "            _____        _
-         / |  __ \      (_)
-        /  | |  | | ___  ___  __
-  \    /   | |  | |/ _ \| \ \/ /
-   \  /    | |__| | (_) | |>  <
-    \/     |_____/ \___/|_/_/\_\\
- ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+run_default() {
+    local cyan=$(tput setaf 67)      # Muted blue
+    local blue=$(tput setaf 109)     # Frost blue
+    local green=$(tput setaf 108)    # Aurora green
+    local yellow=$(tput setaf 179)   # Warm gray
+    local magenta=$(tput setaf 139)  # Purple gray
+    local red=$(tput setaf 174)      # Muted red
+    local gray=$(tput setaf 242)
+    local reset=$(tput sgr0)
+    
+    cat << EOF
+${cyan}     ┌─────┐   ▄${reset}
+${cyan}     │    ▄│   █      ▄         ${gray}│${reset}  ${yellow}Reimplementation of todo.txt in${reset}
+${cyan}     │▄ ▄▀ │ ▄▄█  ▄▄▄ ▄ ▄ ▄${reset}     ${gray}│${reset}  ${yellow}markdown with a litte gtd candy${reset}
+${cyan}     │ ▀   │${blue}█░░█ █░░█ █ ▐▒▌${reset}     ${gray}│${reset}
+${cyan}     └─────┘${reset} ${blue}▀▀▀  ▀▀  ▀ ▀ ▀${reset}     ${gray}│${reset}
+${blue}   ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒${reset}   ${gray}│${reset}
+${green}   ░░░░░░░░░░░░░░░░░░░░░░░░░░${reset}   ${gray}│${reset}
+                                ${gray}│${reset}  ${magenta}made by eduardofuncao${reset}
 
- Reimplementation of todo.txt in markdown with gtd candy
-  "
+
+   ${green}\$ doix help${reset}              ${gray}getting started${reset}
+   ${green}\$ doix help <command>${reset}    ${gray}command specific instructions${reset}
+
+
+EOF
 }
 
 case "$cmd" in
@@ -173,6 +203,8 @@ case "$cmd" in
   "remove"|"rm") run_remove $@
   ;;
   "edit"|"ed") run_edit $@
+  ;;
+  "backlog"|"log") run_backlog $@
   ;;
   "done") run_done $@
   ;;
