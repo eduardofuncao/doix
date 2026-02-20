@@ -9,7 +9,11 @@ cmd=$1
 shift
 
 highlight_text () {
-  printf "\x1b[31m%s\x1b[0m\n" "$1"
+  printf "\x1b[31m%s\x1b[0m\n" "$*"
+}
+
+fade_text () {
+  printf "\x1b[2m%s\x1b[0m\n" "$*"
 }
 
 run_init() {
@@ -18,7 +22,7 @@ run_init() {
   else
     mkdir -p $todo_dir
     touch $done_file
-    touch $backlog_file
+    printf "%b" "# Backlog\n\n## Captured Tasks" > "$backlog_file"
     printf "%b" \
     "# Doix\n\n---\n\nactive_context:\n"\
     "active_project:\n"\
@@ -32,7 +36,7 @@ run_init() {
 
 run_add() {
   local task_desc="$*"
-  sed -i "/^## Captured Tasks$/a $task_desc" $todo_file
+  sed -i "/^## Captured Tasks$/a $context $task_desc" $backlog_file
 }
 
 run_list() {
@@ -65,7 +69,8 @@ run_list() {
 
   print_section () {
     local title=$1
-    local content=$(awk "/^## $title/{flag=1; next} /^## /{flag=0} flag" $todo_file)
+    local file=$2
+    local content=$(awk "/^## $title/{flag=1; next} /^## /{flag=0} flag" $file)
 
     case "$title" in
       "Weekly Recurring"|"Monthly Recurring")
@@ -75,6 +80,11 @@ run_list() {
         content=$(echo "$content" | filter_events)
         ;;
     esac
+
+
+    if [[ -n $context ]]; then
+      content=$(echo "$content" | rg --color=always -- "$context")
+    fi
 
     if [[ -n $seach_term ]]; then
       content=$(echo "$content" | rg --color=always -- "$seach_term")
@@ -87,27 +97,38 @@ run_list() {
     #   echo "none"
     fi
   }
-  print_section "Active Tasks"
-  print_section "Captured Tasks"
-  print_section "Events"
-  print_section "Weekly Recurring"
-  print_section "Monthly Recurring"
+
+  if [[ -n $context ]]; then
+    echo  "$(fade_text "context: "$context)"
+  fi
+
+  print_section "Active Tasks" $todo_file
+  print_section "Captured Tasks" $backlog_file
+  print_section "Events" $todo_file
+  print_section "Weekly Recurring" $todo_file
+  print_section "Monthly Recurring" $todo_file
 }
 
 run_remove() {
   local substring="$*"
-  local match=$(grep -n -- "$substring" "$todo_file" | head -n1)
-  local line=$(echo "$match" | cut -d: -f1)
-
+  local match=$(grep -n -- "$substring" "$todo_file" "$backlog_file" | head -n1)
+  
   if [[ -z $match ]]; then
     printf "No task found matching: %s\n" "$substring"
     return 1
   fi
-
-  echo "$match"
+  
+  local file=$(echo "$match" | cut -d: -f1)
+  local line=$(echo "$match" | cut -d: -f2)
+  local text=$(echo "$match" | cut -d: -f3-)
+  
+  echo "$line:$text"
+  echo "$(fade_text "File: $(basename "$file")")"
   read -p "Delete task? [y/n] " ans
+  
   if [[ $ans =~ ^[Yy]$ ]]; then
-    sed -i "${line}d" "$todo_file"
+    sed -i "${line}d" "$file"
+    echo "Deleted from $(basename "$file")"
   else
     echo "Cancelled by the user"
   fi
@@ -144,6 +165,32 @@ run_backlog() {
   fi
 }
 
+run_activate() {
+  echo "not implemented yet :("
+}
+
+run_context() {
+  new_context="$*"
+
+  if [[ -z $new_context ]]; then
+    if [[ -z $context ]];then
+      echo "context not set, use doix ctx <context>"
+    else
+      echo "context set to $(highlight_text $context)"
+    fi
+    return 0
+  fi
+
+  if [[ $new_context == "none" ]]; then
+    sed -i "s/^active_context:.*/active_context:/" "$todo_file"
+    echo "context unset"
+    return 0
+  fi
+
+  sed -i "s/^active_context:.*/active_context: $new_context/" "$todo_file"
+  echo "context set to $(highlight_text $new_context)"
+}
+
 run_done() {
   local substring="$*"
   local match=$(grep -n -- "$substring" "$todo_file" | head -n1)
@@ -166,12 +213,12 @@ run_done() {
 }
 
 run_default() {
-    local cyan=$(tput setaf 67)      # Muted blue
-    local blue=$(tput setaf 109)     # Frost blue
-    local green=$(tput setaf 108)    # Aurora green
-    local yellow=$(tput setaf 179)   # Warm gray
-    local magenta=$(tput setaf 139)  # Purple gray
-    local red=$(tput setaf 174)      # Muted red
+    local cyan=$(tput setaf 67)
+    local blue=$(tput setaf 109)
+    local green=$(tput setaf 108)
+    local yellow=$(tput setaf 179)
+    local magenta=$(tput setaf 139)
+    local red=$(tput setaf 174)
     local gray=$(tput setaf 242)
     local reset=$(tput sgr0)
     
@@ -186,12 +233,24 @@ ${green}   ░░░░░░░░░░░░░░░░░░░░░░░
                                 ${gray}│${reset}  ${magenta}made by eduardofuncao${reset}
 
 
-   ${green}\$ doix help${reset}              ${gray}getting started${reset}
+   ${magenta}Every task lives in doix.md, backlog.md, and done.md, in the \$HOME/doix/ directory ${reset}
+   ${magenta}At the start of the week, move tasks from the backlog to the doix file${reset}
+   ${magenta}finish all your active tasks by the end of the week to get things done${reset}
+
    ${green}\$ doix help <command>${reset}    ${gray}command specific instructions${reset}
+
+   ${green}\$ doix add @house make the bed${reset}    ${gray}add task to captured tasks${reset}
+   ${green}\$ doix ls @house${reset}    ${gray}list every tasks containing the substring '@house'${reset}
+   ${green}\$ doix done bed${reset}    ${gray}move the first task containing 'bed' to the done file${reset}
+
 
 
 EOF
 }
+
+
+
+context=$(grep "^active_context:" "$todo_file" | sed 's/^active_context: *//')
 
 case "$cmd" in
   "init"|"start") run_init
@@ -205,6 +264,10 @@ case "$cmd" in
   "edit"|"ed") run_edit $@
   ;;
   "backlog"|"log") run_backlog $@
+  ;;
+  "activate"|"start") run_activate $@
+  ;;
+  "context"|"ctx") run_context $@
   ;;
   "done") run_done $@
   ;;
